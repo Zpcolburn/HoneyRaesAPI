@@ -213,4 +213,85 @@ app.MapPut("/servicetickets/{id}/complete", (int id) =>
     return Results.Ok(ticketToComplete);
 });
 
+app.MapGet("/api/serviceTickets/emergencies", () =>
+
+{
+    List<ServiceTicket> emergencies = serviceTickets.Where(st => st.Emergency == true && st.DateCompleted == null).ToList();
+    return Results.Ok(emergencies);
+});
+
+app.MapGet("/apiserviceTickets/unassigned", () =>
+{
+    List<ServiceTicket> unassigned = serviceTickets.Where(st => st.EmployeeId == null).ToList();
+    return Results.Ok(unassigned);
+
+});
+
+app.MapGet("/customer/inactive", () =>
+{
+    DateTime lastYear = DateTime.Now.AddYears(-1);
+
+    List<Customer> inactiveCustomers = customers
+                   .Where(c => !serviceTickets
+                   .Any(st => st.CustomerId == c.Id && st.DateCompleted.HasValue && st.DateCompleted.Value > lastYear))
+                   .ToList();
+
+    return Results.Ok(inactiveCustomers);
+});
+
+
+app.MapGet("/api/employee/available", () =>
+{
+    var availableEmployees = serviceTickets.Where(st => st.DateCompleted == null).Select(st => st.EmployeeId).ToList();
+    var available = employees.Where(st => !availableEmployees.Contains(st.Id)).ToList();
+    return Results.Ok(available);
+});
+
+app.MapGet("/employees/{id}/customers", (int id) =>
+{
+    var customerIds = serviceTickets.Where(st => st.EmployeeId == id).Select(st => st.CustomerId).Distinct().ToList();
+    var customersForEmployee = customers.Where(c => customerIds.Contains(c.Id)).ToList();
+    return Results.Ok(customersForEmployee);
+});
+
+app.MapGet("/employee/month", () =>
+{
+    var completedTicketCountByEmployee = serviceTickets
+        .Where(st => st.EmployeeId != null && st.DateCompleted != null)
+        .GroupBy(st => st.EmployeeId) 
+        .Select(st => new
+        {
+            EmployeeId = st.Key,
+            ServiceTicketCount = st.Count() 
+        })
+        .OrderByDescending(c => c.ServiceTicketCount)
+        .FirstOrDefault();
+
+    if (completedTicketCountByEmployee == null)
+    {
+        return Results.NotFound();
+    }
+
+    var topTicketCountByEmployee = employees.FirstOrDefault(e => e.Id == completedTicketCountByEmployee.EmployeeId);
+
+    return Results.Ok(topTicketCountByEmployee);
+});
+
+app.MapGet("/api/serviceTickets/review", () =>
+{
+    List<ServiceTicket> completedTickets = serviceTickets
+    .Where(st => st.DateCompleted.HasValue)
+    .OrderBy(st => st.DateCompleted)
+    .ToList();
+
+    foreach (var ticket in completedTickets)
+    {
+        ticket.Customer = customers.FirstOrDefault(c => c.Id == ticket.CustomerId);
+        ticket.Employee = employees.FirstOrDefault(e => e.Id == ticket.EmployeeId);
+    }
+
+    return Results.Ok(completedTickets);
+});
+
+
 app.Run();
